@@ -1,0 +1,2 @@
+/home/ricardo/Desktop/TEAM/TEAM/CMakeFiles/get_snps.dir
+/home/ricardo/Desktop/TEAM/TEAM/CMakeFiles/test_all.dir

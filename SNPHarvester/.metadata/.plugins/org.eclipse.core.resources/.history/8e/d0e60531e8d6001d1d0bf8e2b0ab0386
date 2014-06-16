@@ -1,0 +1,116 @@
+package test;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.util.ArrayList;
+import java.util.StringTokenizer;
+import java.math.BigInteger;
+
+import algorithms.*;
+
+public class testSequentialKMedoids {
+
+	public static void main(String[] args) throws Exception{
+		
+		for(int s=0;s<1;s++){
+			
+			//String path = "simulation_data\\"+(25+s)+"\\";
+			
+			//String path = "simulation_data\\beam\\model2\\MAF0.5\\";
+			String path ="D:\\Share\\epidata_400\\0.4_0.4\\25\\";
+			
+			String measure = "chi_square";
+			String resultType = "thresholdBased";
+			
+			int topK = 5;
+			
+			int numSuccessiveRun = 40;
+			double pValue = .01;
+			int maxk =2;
+			int mink =1;
+			
+			
+			double start = System.currentTimeMillis();
+			
+			String[] groundTruth = {"0","49"}; 
+			String gstr = "(";
+			for(int i=0;i<groundTruth.length;i++){
+				gstr = gstr + groundTruth[i]+",";
+			}
+			gstr = gstr.substring(0,gstr.length()-1)+")";
+			
+			int numFiles = 100;
+			
+			double identified =0;
+			
+			int avg_num_evaluation = 0;
+			
+            File outputfile= new File(path+"SequentialKMedoids_Result("+measure+")"+".txt");
+            BufferedWriter out = new BufferedWriter(new FileWriter(outputfile));
+            
+			for(int i=0;i<numFiles;i++){
+
+				
+				System.out.println("=======Data "+(i+1)+"=======");
+				out.write("=======Data "+(i+1)+"======="+"\n");
+				
+				//String fileName = path+"Genodata"+(i+1)+".txt";
+				//String fileName = path+ "beamsim"+(i+1)+".txt";
+				String fileName = path+ "beamsim"+(i+1)+".txt";
+				
+				
+				SNPHarvester alg = new SNPHarvester();
+				ArrayList result = new ArrayList();
+				if(resultType.equals("thresholdBased")){
+					result = alg.thresholdBasedclusteringProcess(fileName,measure,pValue,numSuccessiveRun,mink,maxk);
+				}
+				
+				if(resultType.equals("topKBased")){
+					result = alg.topKBasedClusteringProcess(fileName,measure,topK,numSuccessiveRun,mink,maxk);
+				}
+				
+				avg_num_evaluation = avg_num_evaluation + alg.getNumEvaluations();
+				
+				for(int j=0;j<result.size();j++){
+					ArrayList al = (ArrayList)result.get(j);
+					String pattern = (String)al.get(0);
+					
+					if(pattern.equals(gstr)){
+						identified++;
+					}
+					
+					double value = ((Double)al.get(1)).doubleValue();
+					
+					out.write(measure+" value:"+value+" || "+pattern+"\n");
+					System.out.println(measure+" value:"+value+" || "+pattern);
+				}
+				
+				System.out.println("Current Identified Interactions:"+identified);
+				out.write("Current Identified Interactions:"+identified+"\n");
+				System.out.println("Number of Evaluations:"+alg.getNumEvaluations());
+
+				
+				System.out.println("Final Identified Interactions:"+identified);
+				
+				//out.write("===Final Results======"+"\n");
+				//out.write("Final Identified Interactions:"+identified+"\n");
+				
+				
+				
+			}
+			
+			double end = System.currentTimeMillis();
+			System.out.println("Avearge Runnning Time:"+(end-start)/((double)1000*(double)numFiles));
+			System.out.println("Average Number of Evaluations:"+avg_num_evaluation/numFiles);
+			out.write("=========Final Results======"+"\n");
+			out.write("Final Identified Interactions:"+identified+"\n");
+			out.close();
+
+		}		
+	
+
+	}
+		
+}
+

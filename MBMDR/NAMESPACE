@@ -1,0 +1,8 @@
+export("mbmdr", 
+       "mbmdr.PermTest")
+       
+       
+S3method(print, mbmdr)
+S3method(print, mbmdr.PermTest)
+S3method(summary, mbmdr)
+S3method(print, summary.mbmdr)       

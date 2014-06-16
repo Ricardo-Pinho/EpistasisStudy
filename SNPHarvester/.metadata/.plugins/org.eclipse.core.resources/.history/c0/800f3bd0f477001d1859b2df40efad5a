@@ -1,0 +1,78 @@
+package algorithms;
+
+import org.apache.commons.math.distribution.ChiSquaredDistribution;
+import org.apache.commons.math.distribution.ChiSquaredDistributionImpl;
+
+public class postProcessing extends BasicAlg{
+	
+	public postProcessing(String path) throws Exception{
+		ReadWholeGnomeData(path);
+	}
+	
+	
+	public void run(){
+	    
+		double[] singleChiSquareValue =new double[colCount];
+		int[] selectedSNPSet = new int[1];
+		
+		for(int i=0; i<colCount-1; i++) {
+	    	
+			selectedSNPSet[0] = i; 
+			
+			
+			double orginalValue = getObjectiveValue(selectedSNPSet);
+	    	  	    	  
+	          double tmp = -Double.MAX_VALUE;
+	          int tmpPos = -1;
+	          
+	          
+	          for(int j=0;j<k;j++){
+	        	  
+	        	  if(testFeasibility (selectedSNPSet,j,i)){
+		        	  double cur =getChangedObjectValue(orginalValue,selectedSNPSet,j,i);
+		        	  if(tmp<cur){
+		        		  tmp=cur;
+		        		  tmpPos = j;
+		        	  }
+	        	  }
+	          }
+	         
+	          if(tmp>0){
+	        	  hasSwap = true;
+	        
+	        	  /*Swap happens*/
+	        	  indicator[i] = 1;
+	        	  indicator[selectedSNPSet[tmpPos]]=0;
+	        	  selectedSNPSet[tmpPos] = i;
+	  
+	        	  swap++;
+	        	  //System.out.println(orginalValue);
+	        	  orginalValue = getObjectiveValue(selectedSNPSet);
+	        	  				        	  
+	        	  System.out.print(orginalValue+" (");
+	        	  for(int h=0;h<k;h++){
+	        		  System.out.print(selectedSNPSet[h]+",");
+	        	  }
+	        	  System.out.print(")"+" || ");
+	        	  
+				  ChiSquaredDistribution distribution = new ChiSquaredDistributionImpl(Math.pow(3, k)-1);
+				  double pvalue = 1-distribution.cumulativeProbability(orginalValue);
+				  System.out.println("p value:"+pvalue);
+	          }
+	       }
+	   }
+   }
+
+	for(int h=0;h<k;h++){
+		deletedSNP.put(new Integer(selectedSNPSet[h]), new Integer(1));
+	}
+		
+		
+	}
+		
+	
+	public static void main(String[] args) throws Exception{
+		
+
+	}
+}

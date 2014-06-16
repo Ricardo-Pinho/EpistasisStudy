@@ -1,0 +1,15 @@
+77cb4a112a53378f9c3b6a75ee55b63d *DESCRIPTION
+88a0768bd7c803f8085abf270df1d00b *NAMESPACE
+a0b2235bd741f02334f0af4478075635 *R/mbmdr.PermTest.R
+97c4092e023c063dacfc98ac5c5a2640 *R/mbmdr.R
+50aab12abf81a9e66d17358ebe36e112 *R/print.mbmdr.PermTest.R
+fcf5f9b4383a9d55da4dbe94b5cecaee *R/print.mbmdr.R
+0a7e26edec46e7c89b547513009556b3 *R/print.summary.mbmdr.R
+6f873b6480cedb5cbe7a080d8ca083d8 *R/summary.mbmdr.R
+9f8aae730cf8b373b28c40a69317ac05 *R/zzz.R
+d21a09d9fcad1392b01d4b9c4a448298 *data/simSNP.rda
+2f29214809fc87323261fe7d4626ea4a *data/simSNPcont.rda
+2fa1ea9b392046e8dad243dacb99c17f *man/mbmdr.PermTest.Rd
+ceedcc90bb7a2adad7572c72b3d9d1c0 *man/mbmdr.Rd
+a7ecf19eada060615828c8ce9d1a6925 *man/simSNP.Rd
+a365aba8fe63e503205dcaec8603c6de *man/summary.mbmdr.Rd

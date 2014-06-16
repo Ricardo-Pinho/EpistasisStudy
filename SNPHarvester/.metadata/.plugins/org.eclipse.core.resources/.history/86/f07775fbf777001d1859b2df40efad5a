@@ -1,0 +1,172 @@
+package algorithms;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.util.StringTokenizer;
+
+import org.apache.commons.math.distribution.ChiSquaredDistribution;
+import org.apache.commons.math.distribution.ChiSquaredDistributionImpl;
+
+import weka.core.Utils;
+
+public class postProcessing extends BasicAlg{
+	
+	public postProcessing(String path) throws Exception{
+		ReadWholeGnomeData(path);
+	}
+	
+    public double chi_square(int[] selectedSNPSet){
+    	
+		int k = selectedSNPSet.length;
+		
+		int comb = (int)Math.pow(3.0, k);
+		double[][] observedValues = new double[2][comb];
+		double[]   colSumTable = new double[comb]; 
+		double[][] expectedValues = new double[2][comb]; 
+		
+		for(int i=0;i<comb;i++){
+			observedValues[0][i] = 0;
+			observedValues[1][i] = 0;
+			colSumTable[i] = 0;
+		}
+		
+		/*constructing observed freq table*/
+		for(int i=0;i<rowCount;i++){
+			int index = 0;
+			boolean cont = true;
+			loop:for(int j=0;j<k;j++){
+				if(data[i][2*selectedSNPSet[j]] && data[i][2*selectedSNPSet[j]+1]){
+					cont = false;
+					break loop;
+				}else{
+					int val = 0;
+					if(!data[i][2*selectedSNPSet[j]] && data[i][2*selectedSNPSet[j]+1]){
+						val =1;
+					}
+					if(data[i][2*selectedSNPSet[j]] && !data[i][2*selectedSNPSet[j]+1]){
+						val =2;
+					}
+					index = index + val*(int)Math.pow(3.0,(k-1-j));
+				}
+			}
+			
+			if(cont){
+				if(!data[i][2*(colCount-1)] && !data[i][2*colCount-1]){
+					observedValues[0][index]++;
+				}else{
+					observedValues[1][index]++;
+				}
+				colSumTable[index]++;
+			}
+		}
+		
+		/*
+		if(selectedSNPSet[0]==14 && selectedSNPSet[1]==22){
+		for(int i=0;i<comb;i++){
+			System.out.println(observedValues[0][i]+"\t"+observedValues[1][i]+"\t"+colSumTable[i]);
+		}
+		}
+		System.out.println("=====");
+		*/
+		
+		/*computing expected freq values and compute chi-square value*/
+		double x2 = 0;
+		for(int i=0;i<comb;i++){
+			expectedValues[0][i] = colSumTable[i]*classValues[0]/(double)rowCount;
+			expectedValues[1][i] = colSumTable[i]*classValues[1]/(double)rowCount;
+			
+			if(expectedValues[0][i]!=0){
+				x2 = x2 + (expectedValues[0][i]-observedValues[0][i])*(expectedValues[0][i]-observedValues[0][i])
+		           /expectedValues[0][i];
+			}
+
+			if(expectedValues[1][i]!=0){
+				x2 = x2 + (expectedValues[1][i]-observedValues[1][i])*(expectedValues[1][i]-observedValues[1][i])
+		           /expectedValues[1][i];
+			}
+
+		}
+	   
+		return x2; 
+    }
+    
+    
+    public double getObjectiveValue(int[] selectedSNPSet) throws Exception{
+		  
+		  int k = selectedSNPSet.length;
+		  
+		  double value =0;
+		    
+	     value = chi_square(selectedSNPSet);
+		 
+		  return value;
+	}
+	
+	public void run()throws Exception{
+	    
+		double[] singleChiSquareValue =new double[colCount];
+		int[] selectedSNPSet = new int[1];
+		
+		for(int i=0; i<colCount-1; i++) { 	
+			selectedSNPSet[0] = i; 
+			singleChiSquareValue[i] = getObjectiveValue(selectedSNPSet);  	    	  
+		}
+		
+		String path ="D:\\Share\\WTCCC\\";
+		
+        File outputfile= new File(path+"pruned_order2.txt");
+        BufferedWriter out = new BufferedWriter(new FileWriter(outputfile));
+        
+	    StringTokenizer token = null;
+	    StringTokenizer token2 = null;
+	    StringTokenizer token3 = null;
+	    StringTokenizer token31 = null;
+	    StringTokenizer token32 = null;
+	    
+	    FileReader in = new FileReader(path+"order2.txt");
+	    BufferedReader d = new BufferedReader(in);
+	    String tuple;
+	    
+	    while ((tuple=d.readLine()) != null) {
+	    	
+	    	token = new StringTokenizer(tuple,":");
+	    	token.nextToken();
+	    	String sub = token.nextToken();
+	    	
+	    	token2 = new StringTokenizer(sub," || ");
+	    	double sigValue = new Double(token2.nextToken()).doubleValue();
+	    	sub = token2.nextToken();
+	    	
+	    	token3 = new StringTokenizer(sub,",");
+	    	String sub31 = token3.nextToken();
+	    	String sub32 = token3.nextToken();
+	    	
+	    	token31 =  new StringTokenizer(sub31,"-");
+	    	token31.nextToken();
+	    	int chrPos31 = new Integer(((String)(token31.nextToken()).substring(3))).intValue();
+	    	int internalPos31 = new Integer(((String)(token31.nextToken()))).intValue();
+	    	
+	    	
+	    	token32 =  new StringTokenizer(sub32,"-");
+	    	token32.nextToken();
+	    	int chrPos32 = new Integer(((String)(token32.nextToken()).substring(3))).intValue();
+	    	int internalPos32 = new Integer(((String)(token32.nextToken()))).intValue();
+	    	
+	    	
+	    	
+	    	
+	    } 
+	   
+	    	
+	}
+		
+	
+	public static void main(String[] args) throws Exception{
+		
+
+	}
+}
