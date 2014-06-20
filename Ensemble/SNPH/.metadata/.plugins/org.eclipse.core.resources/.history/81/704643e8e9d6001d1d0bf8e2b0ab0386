@@ -1,0 +1,819 @@
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.math.BigInteger;
+import java.util.Hashtable;
+import java.util.Random;
+import java.util.ArrayList;
+import java.util.Enumeration;
+
+import weka.core.Utils;
+
+import org.apache.commons.math.distribution.ChiSquaredDistribution;
+import org.apache.commons.math.distribution.ChiSquaredDistributionImpl;
+
+/*
+ *  We provide two basic running schema for SNPHarvester: 
+ *  (1) Top-K Based Schema: under this setting, the algorithm will report $K$ most significant interactions
+ *                          to the user at each order, where $K$ is a user-specifed parameter.
+ *  and
+ *  
+ *  (2) Threshold Based Schema: under this setting, the algorithm will report all interactions that are 
+ *                              above the p-value threshold after bonferroni correction. 
+ * 
+ */
+
+public class SNPHarvester extends BasicAlg{
+
+	/* Indicator for the running schema: threshold-based if true; otherwise, top-k based*/
+	public boolean thresholdBased = true;
+	
+	/* The interaction measure, e.g., Chi-Square, B-Statistics */
+	public String m_measure;
+	
+	/* The maximal order of interactions */
+	public int maxK;
+	
+	/* The minimal order of interactions */
+	public int minK;
+	
+	/* Data structure for storing results*/
+	double[][] bestValue; 
+	String[][]  bestPattern; 
+		
+	Hashtable[] pPatternEntry; 
+	
+	/* For evaluation purpose only*/
+	int numEvaluation = 0;
+	
+	
+	/* 
+	 * Top-K based Running Schema
+	 * 
+	 * path             -- the input SNP data set
+	 * measure          -- the interaction measure, e.g., Chi-Square, B-Statistics
+	 * topK             -- the number of most significant interactions to be reported
+	 * numSuccessiveRun -- number of successive runs 
+	 * mink             -- the minimal order of interactions
+	 * maxk             -- the maximal order of interactions 
+	 * 
+	 */
+	public ArrayList topKBasedRunningProcess
+	                  (String path,String measure,int topK,int numSuccessiveRun,int mink,int maxk) throws Exception{
+		thresholdBased = false;
+		
+		maxK = maxk;
+		minK = mink;
+		pPatternEntry = new Hashtable[maxK-minK+1];
+		bestValue = new double[maxK-minK+1][topK];
+		bestPattern = new String[maxK-minK+1][topK];
+		
+		for(int i=0;i<maxK-minK+1;i++){
+			for(int j=0;j<topK;j++){
+			  bestValue[i][j] = -Double.MAX_VALUE;
+		      bestPattern[i][j]="";
+			}
+		}
+		
+		m_measure = measure;
+		
+		/* Read the data into main memery */
+		ReadData(path);
+				
+		/* Identify all mink~maxk order interaction patterns */
+		for(int order=minK;order<maxK+1;order++){
+			
+			int k = order;
+			Hashtable deletedSNP = new Hashtable();
+			pPatternEntry[k-minK] = new Hashtable();
+			int numFailedRun = 0;
+			
+			/* Continue until after "numSuccessiveRun" runs such that better interactions can be identified*/
+			int r =0;
+			while(numFailedRun<numSuccessiveRun){
+				r++;
+				System.out.println("============ "+r+"th random run============");
+				
+				/* Initialization */
+				int[] selectedSNPSet = Initialize(k,deletedSNP);
+				
+				int[] indicator = new int[colCount];
+				for(int i=0;i<indicator.length;i++){
+					indicator[i] =0;
+				}
+				for(int i=0;i<selectedSNPSet.length;i++){
+					indicator[selectedSNPSet[i]] = 1;
+				}
+
+				boolean hasSwap = true;
+				int iteration = 0;
+				int swap =0;
+				
+				int minIndex = Utils.minIndex(bestValue[k-minK]);
+				double oldMinValue = bestValue[k-minK][minIndex];
+				
+				/* Iteration */
+				while(hasSwap){
+					hasSwap = false;
+					iteration++;
+					
+				    System.out.println("Iteration Number:"+iteration);
+
+				    for(int i=0; i<colCount-1; i++) {
+				    	
+				    	if(indicator[i]==0 && testSingleSNPFeasibility(i) &&
+				    			(Integer)deletedSNP.get(new Integer(i))==null){
+				    		
+				    	  double orginalValue = getObjectiveValue(selectedSNPSet);
+				    	  	    	  
+				          double tmp = -Double.MAX_VALUE;
+				          int tmpPos = -1;
+				          
+				          for(int j=0;j<k;j++){
+				        	  if(testFeasibility (selectedSNPSet,j,i)){
+					        	  double cur =getChangedObjectValue(orginalValue,selectedSNPSet,j,i);
+					        	  if(tmp<cur){
+					        		  tmp=cur;
+					        		  tmpPos = j;
+					        	  }
+				        	  }
+				          }
+				         
+				          if(tmp>0){
+				        	  hasSwap = true;
+				        
+				        	  /*Swap happens*/
+				        	  indicator[i] = 1;
+				        	  indicator[selectedSNPSet[tmpPos]]=0;
+				        	  selectedSNPSet[tmpPos] = i;
+				  
+				        	  swap++;
+				     
+				        	  orginalValue = getObjectiveValue(selectedSNPSet);
+				        	  System.out.print(orginalValue+" (");
+				        	  for(int h=0;h<k;h++){
+				        		  System.out.print(selectedSNPSet[h]+",");
+				        	  }
+				        	  System.out.print(")"+"\n");
+				          }
+				       }
+				   }
+			   }
+				
+				
+				for(int h=0;h<k;h++){
+					deletedSNP.put(new Integer(selectedSNPSet[h]), new Integer(1));
+				}
+				
+				
+				minIndex = Utils.minIndex(bestValue[k-minK]);
+				double newMinValue = bestValue[k-minK][minIndex];
+				
+				
+				if(newMinValue>oldMinValue){
+					  numFailedRun = 0;
+				}else{
+					  numFailedRun++;
+				}
+				if(k==1){
+					numFailedRun = numSuccessiveRun+1;
+				}
+			}
+		}
+	
+		/* Report the result*/
+        ArrayList result = new ArrayList();
+		
+		for(int i=0;i<maxK-minK+1;i++){
+			int pos[] = Utils.sort(bestValue[i]);
+			
+			for(int j=0;j<topK;j++){
+				ArrayList al = new ArrayList();
+				al.add(bestPattern[i][pos[topK-1-j]]);
+				al.add(new Double(bestValue[i][pos[topK-1-j]]));
+				result.add(al);
+			}
+		}
+		return result;
+	}
+	
+
+	/* 
+	 * Threshold based Running Schema
+	 * Report all mink-maxk order interaction patterns above the specfied p-value threshold
+	 * 
+	 * path             -- the input SNP data set
+	 * measure          -- the interaction measure, e.g., Chi-Square, B-Statistics
+	 * pValue           -- the specfied p-value threshold
+	 * numSuccessiveRun -- number of successive runs 
+	 * mink             -- the minimal order of interactions
+	 * maxk             -- the maximal order of interactions 
+	 * 
+	 */
+	public ArrayList thresholdBasedRunningProcess
+	       (String path,String measure,double pValue,int numSuccessiveRun,int mink,int maxk) throws Exception{
+		thresholdBased = true;
+		
+		maxK = maxk;
+		minK = mink;
+		pPatternEntry = new Hashtable[maxK-minK+1];
+		
+		m_measure = measure;
+		
+		/* Read the data*/
+		ReadData(path);
+		
+		/* All mink-maxk order interaction patterns */
+		for(int order=minK;order<maxK+1;order++){
+			int k = order;
+			Hashtable deletedSNP = new Hashtable();
+			pPatternEntry[k-minK] = new Hashtable();
+			pValueThreshold = pValue;
+		
+			/*Bonferroni correction*/
+			double totalTest = 1;
+			for(int t=0;t<k;t++){
+				totalTest = totalTest*(double)(colCount-1-t)/(double)(t+1);
+			}
+			pValueThreshold = pValueThreshold/totalTest;
+			//System.out.println("Total Test:"+totalTest+ " and Bonferroni correction p-Value:"+pValueThreshold);
+			
+			int numFailedRun = 0;
+			
+			/* Continue until after "numSuccessiveRun" runs such that no significant interactions can be identified*/
+			int r =0;
+			while(numFailedRun<numSuccessiveRun){
+				r++;
+				System.out.println("============ "+r+"th random run============");
+				
+				int[] selectedSNPSet = Initialize(k,deletedSNP);
+				
+				int[] indicator = new int[colCount];
+				for(int i=0;i<indicator.length;i++){
+					indicator[i] =0;
+				}
+				for(int i=0;i<selectedSNPSet.length;i++){
+					indicator[selectedSNPSet[i]] = 1;
+				}
+
+				boolean hasSwap = true;
+				int iteration = 0;
+				int swap =0;
+				
+				int oldSize = pPatternEntry[k-minK].size();
+				
+				while(hasSwap){
+					hasSwap = false;
+					iteration++;
+					
+				    System.out.println("Iteration Number:"+iteration);
+				    
+				    for(int i=0; i<colCount-1; i++) {
+				    	
+				    	if(indicator[i]==0 && (Integer)deletedSNP.get(new Integer(i))==null 
+				    			&& testSingleSNPFeasibility(i)){
+				    	
+				    	  double orginalValue = getObjectiveValue(selectedSNPSet);
+				    	  	    	  
+				          double tmp = -Double.MAX_VALUE;
+				          int tmpPos = -1;
+				          
+				          for(int j=0;j<k;j++){
+				        	  
+				        	  if(testFeasibility (selectedSNPSet,j,i)){
+					        	  double cur =getChangedObjectValue(orginalValue,selectedSNPSet,j,i);
+					        	  if(tmp<cur){
+					        		  tmp=cur;
+					        		  tmpPos = j;
+					        	  }
+				        	  }
+				          }
+				         
+				          if(tmp>0){
+				        	  hasSwap = true;
+				        
+				        	  /*Swap happens*/
+				        	  indicator[i] = 1;
+				        	  indicator[selectedSNPSet[tmpPos]]=0;
+				        	  selectedSNPSet[tmpPos] = i;
+				  
+				        	  swap++;
+				        	  //System.out.println(orginalValue);
+				        	  orginalValue = getObjectiveValue(selectedSNPSet);
+				        	  				        	  
+				        	  System.out.print(orginalValue+" (");
+				        	  for(int h=0;h<k;h++){
+				        		  System.out.print(selectedSNPSet[h]+",");
+				        	  }
+				        	  System.out.print(")"+" || ");
+				        	  
+							  ChiSquaredDistribution distribution = new ChiSquaredDistributionImpl(Math.pow(3, k)-1);
+							  double pvalue = 1-distribution.cumulativeProbability(orginalValue);
+							  //System.out.println("p value:"+pvalue);
+				          }
+				       }
+				   }
+			   }
+			
+				for(int h=0;h<k;h++){
+					deletedSNP.put(new Integer(selectedSNPSet[h]), new Integer(1));
+				}
+			
+			  int newSize = pPatternEntry[k-minK].size();
+			  
+			  
+			  if(newSize>oldSize){
+				  numFailedRun = 0;
+			  }else{
+				  numFailedRun++;
+			  }
+			  if(k==1){
+				  numFailedRun = numSuccessiveRun+1;
+			  }
+			  
+			
+			}
+			
+		}
+		
+		/* Report the result*/
+        ArrayList result = new ArrayList();
+		
+		int counter = 0;
+		for(int i=0;i<maxK-minK+1;i++){
+			int num = pPatternEntry[i].size();
+			counter = 0;
+			double[] value = new double[num];
+			String[] pattern =  new String[num];
+			
+			for (Enumeration e = ((Hashtable) (pPatternEntry[i])).keys(); e.hasMoreElements(); ) {
+				String key=(String) e.nextElement();
+				Double v = (Double)pPatternEntry[i].get(key);
+				pattern[counter] = key;
+				value[counter] = v.doubleValue();
+				
+				counter++;
+			}
+			
+			int pos[] = Utils.sort(value);
+			
+			for(int j=0;j<num;j++){
+				ArrayList al = new ArrayList();
+				al.add(pattern[pos[num-1-j]]);
+				al.add(new Double(value[pos[num-1-j]]));
+				result.add(al);
+			}
+		}
+		
+		return result;
+	   
+	}
+	
+	/* The initialization procedure*/
+	public int[] Initialize(int k,Hashtable deletedSNP) throws Exception{
+		
+		int[] selectedSNPSet = new int[k];
+		
+		boolean finished = false;
+		
+		while(!finished){
+			
+			Hashtable ht = new Hashtable();
+			for(int i=0;i<k;i++){
+				Random r = new Random();
+				int pos = r.nextInt(colCount-1);
+				
+				Integer entry = (Integer)ht.get(new Integer(pos));
+				
+				Integer Interaction_entry = (Integer)deletedSNP.get(new Integer(pos));
+				
+				while(entry!=null || Interaction_entry!=null || !testSingleSNPFeasibility(pos)){
+					pos = r.nextInt(colCount-1);
+					entry = (Integer)ht.get(new Integer(pos));
+					Interaction_entry = (Integer)deletedSNP.get(new Integer(pos));
+				}
+				
+				ht.put(new Integer(pos), new Integer(pos));
+				selectedSNPSet[i]=pos;
+			}			
+			
+			ht.clear();
+			if(testFeasibility(selectedSNPSet,0,selectedSNPSet[0])){
+				finished = true;
+			}	
+		}
+				
+		double orginalValue = getObjectiveValue(selectedSNPSet);
+  	    System.out.print(orginalValue);
+		
+		return selectedSNPSet;
+	}
+	
+	/*
+	 * Obtain the strength of given SNP set in terms of specified interaction measure
+	 */
+	public double getObjectiveValue(int[] selectedSNPSet) throws Exception{
+		  
+		  int k = selectedSNPSet.length;
+		  
+		  numEvaluation++;
+		  
+		  double value =0;
+		  
+		  if(m_measure.equals("chi_square")){
+			  value = chi_square(selectedSNPSet);
+		  }
+		  
+		  if(m_measure.equals("gammaInteraction")){
+			  value = gammaInteraction(selectedSNPSet); 
+		  }
+		  
+		  if(m_measure.equals("classificationAccuracy")){
+			  value = classificationAccuracy(selectedSNPSet); 
+		  }
+		  
+		  int[] pos = Utils.sort(selectedSNPSet);
+		  String newKey="(";
+		  
+		  for(int i=0;i<pos.length;i++){
+			  newKey = newKey+SNPNames[selectedSNPSet[pos[i]]]+",";
+		  }
+		  newKey = newKey.substring(0,newKey.length()-1)+")";
+		  
+		  Double num = (Double)pPatternEntry[k-minK].get(newKey);
+		  
+		  if(num==null){
+			  if(thresholdBased){
+				  ChiSquaredDistribution distribution = new ChiSquaredDistributionImpl(Math.pow(3, k)-1);
+				  double pvalue = 1-distribution.cumulativeProbability(value);
+		  			
+				  if(pvalue<pValueThreshold){
+					  pPatternEntry[k-minK].put(newKey, new Double(value));
+				  }
+				  
+			  }else{
+				  int minIndex = Utils.minIndex(bestValue[k-minK]);
+				  
+				  if(value>bestValue[k-minK][minIndex]){
+					  
+					  String oldKey =  bestPattern[k-minK][minIndex];
+					  if(oldKey!=newKey){
+						  bestValue[k-minK][minIndex] = value;
+						  bestPattern[k-minK][minIndex] = newKey;
+						  pPatternEntry[k-minK].put(newKey, new Double(value));
+						  
+						  if(((Double)pPatternEntry[k-minK].get(oldKey))!=null){
+							  pPatternEntry[k-minK].remove(oldKey);
+						  } 
+					  }
+
+				  }
+			  }
+		  }
+		  	  
+		  return value;
+	  }
+	  
+
+	
+     /* Obtain the changed interaction measure when swap happens*/
+ 	 public double getChangedObjectValue
+		  (double originalValue, int[] selectedSNPSet,int selectedIndex,int nonSelectedSNP) throws Exception{
+
+			 int[] newSel = new int[selectedSNPSet.length];
+			 for(int i=0;i<newSel.length;i++){
+				 newSel[i] = selectedSNPSet[i];
+			 }
+			 
+			 newSel[selectedIndex] = nonSelectedSNP;
+			 
+			 double newValue = getObjectiveValue(newSel);
+			    
+			 double delta = newValue-originalValue;
+			    
+			 return delta;
+			
+		}
+		
+ 	 
+ 	   /* Test if the pattern is feasible */
+ 	   public boolean testFeasibility (int[] selectedSNPSet,int selectedIndex,int nonSelectedSNP){
+			
+			boolean feasible = true;
+			int k = selectedSNPSet.length;
+			
+    		int[] newSel = new int[selectedSNPSet.length];
+    		
+			for(int i=0;i<newSel.length;i++){
+				newSel[i] = selectedSNPSet[i];
+			}
+			
+			newSel[selectedIndex] = nonSelectedSNP;
+			
+			/*Test if low order pattern are contained */
+	    	if(k>minK && k>2){
+								
+	    		int startOrder = Math.max(minK, 2);
+	    		for(int f=startOrder;f<k;f++){
+		    		int subset_size = f;
+		    		CombinationGenerator cg = new CombinationGenerator(k,subset_size);
+		    		int total = ((BigInteger)cg.getTotal()).intValue();
+		    		for(int p=0;p<total;p++){
+		    			int[] candidate = new int[subset_size];
+		    			int[] pe = cg.getNext();
+		    			for(int q=0;q<pe.length;q++){
+		    				candidate[q] = newSel[pe[q]];
+		    			}
+		    			  
+		    			int[] pos = Utils.sort(candidate);
+		    			String key = "(";
+		    			for(int q=0;q<subset_size;q++){
+		    				key = key+SNPNames[candidate[pos[q]]]+",";
+		    			}
+		    			key = key.substring(0,key.length()-1)+")";
+		    			
+		    			Double num = (Double)pPatternEntry[subset_size-minK].get(key);
+		    			if(num!=null){
+		    				feasible = false;
+		    				return feasible;
+		    			}
+		    		  }	    		
+	    		}
+	    	}
+	    	  			
+			return feasible;
+		}
+		
+		public boolean testSingleSNPFeasibility (int nonSelectedSNP){
+			
+			boolean feasible = true;
+			
+			if(minK==1){
+		    	String key = "("+SNPNames[nonSelectedSNP]+")";
+    			
+			    Double num = (Double)pPatternEntry[minK-1].get(key);
+			    if(num!=null){
+			    	feasible = false;
+			        return feasible;
+			    }
+			}
+				
+			return feasible;
+		}
+        
+		//	  Used by "lnGamma()".
+		private static double[] gamCoef = { 76.18009172947146, -86.50532032941677, 24.01409824083091,
+											-1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5 };
+		/**
+		*  Returns the natural log "ln" of the Gamma Function defined by the integral:
+		*      Gamma(z) = integral from 0 to infinity of t^(z-1)*e^-t dt.
+		*  It is better to implement ln(Gamma(x)) rather than Gamma(x) since the latter
+		*  will overflow many computer's floating point representations at quite modest
+		*  values of x.
+		**/
+		public double lnGamma(double xx) {
+			double x = xx, y=xx;
+			double tmp = x + 5.5;
+			tmp -= (x + 0.5)*Math.log(tmp);
+			double ser = 1.000000000190015;
+			for (int j=0; j <= 5; ++j)
+				ser += gamCoef[j]/++y;
+			return -tmp + Math.log(2.5066282746310005*ser/x);
+		}
+		
+		/* chi-square measure*/
+        public double chi_square(int[] selectedSNPSet){
+        	
+			int k = selectedSNPSet.length;
+			
+			int comb = (int)Math.pow(3.0, k);
+			double[][] observedValues = new double[2][comb];
+			double[]   colSumTable = new double[comb]; 
+			double[][] expectedValues = new double[2][comb]; 
+			
+			for(int i=0;i<comb;i++){
+				observedValues[0][i] = 0;
+				observedValues[1][i] = 0;
+				colSumTable[i] = 0;
+			}
+			
+			/*constructing observed freq table*/
+			for(int i=0;i<rowCount;i++){
+				int index = 0;
+				boolean cont = true;
+				loop:for(int j=0;j<k;j++){
+					if(data[i][2*selectedSNPSet[j]] && data[i][2*selectedSNPSet[j]+1]){
+						cont = false;
+						break loop;
+					}else{
+						int val = 0;
+						if(!data[i][2*selectedSNPSet[j]] && data[i][2*selectedSNPSet[j]+1]){
+							val =1;
+						}
+						if(data[i][2*selectedSNPSet[j]] && !data[i][2*selectedSNPSet[j]+1]){
+							val =2;
+						}
+						index = index + val*(int)Math.pow(3.0,(k-1-j));
+					}
+				}
+				
+				if(cont){
+					if(!data[i][2*(colCount-1)] && !data[i][2*colCount-1]){
+						observedValues[0][index]++;
+					}else{
+						observedValues[1][index]++;
+					}
+					colSumTable[index]++;
+				}
+			}
+			
+			/*computing expected freq values and compute chi-square value*/
+			double x2 = 0;
+			for(int i=0;i<comb;i++){
+				expectedValues[0][i] = colSumTable[i]*classValues[0]/(double)rowCount;
+				expectedValues[1][i] = colSumTable[i]*classValues[1]/(double)rowCount;
+				
+				if(expectedValues[0][i]!=0){
+					x2 = x2 + (expectedValues[0][i]-observedValues[0][i])*(expectedValues[0][i]-observedValues[0][i])
+			           /expectedValues[0][i];
+				}
+
+				if(expectedValues[1][i]!=0){
+					x2 = x2 + (expectedValues[1][i]-observedValues[1][i])*(expectedValues[1][i]-observedValues[1][i])
+			           /expectedValues[1][i];
+				}
+
+			}
+		   
+			return x2; 
+        }
+
+        /* classification accuracy */
+        public double classificationAccuracy(int[] selectedSNPSet){
+        	
+			int k = selectedSNPSet.length;
+			
+			int comb = (int)Math.pow(3.0, k);
+			double[][] observedValues = new double[2][comb];
+			
+			
+			for(int i=0;i<comb;i++){
+				observedValues[0][i] = 0;
+				observedValues[1][i] = 0;
+			}
+			
+			/*constructing observed freq table*/
+			for(int i=0;i<rowCount;i++){
+				int index = 0;
+				boolean cont = true;
+				loop:for(int j=0;j<k;j++){
+					if(data[i][2*selectedSNPSet[j]] && data[i][2*selectedSNPSet[j]+1]){
+						cont = false;
+						break loop;
+					}else{
+						int val = 0;
+						if(!data[i][2*selectedSNPSet[j]] && data[i][2*selectedSNPSet[j]+1]){
+							val =1;
+						}
+						if(data[i][2*selectedSNPSet[j]] && !data[i][2*selectedSNPSet[j]+1]){
+							val =2;
+						}
+						index = index + val*(int)Math.pow(3.0,(k-1-j));
+					}
+				}
+				
+				if(cont){
+					if(!data[i][2*(colCount-1)] && !data[i][2*colCount-1]){
+						observedValues[0][index]++;
+					}else{
+						observedValues[1][index]++;
+					}
+				}
+			}
+			
+			
+			double acc = 0;
+			for(int i=0;i<comb;i++){
+				acc = acc + Math.max(observedValues[0][i], observedValues[1][i]);
+			}
+		   
+			return acc/(double)rowCount; 
+        }
+        
+        /* gamma interaction measure*/
+        public double gammaInteraction(int[] selectedSNPSet){
+        	
+			int k = selectedSNPSet.length;
+			
+			int comb = (int)Math.pow(3.0, k);
+			double[][] observedValues = new double[2][comb];
+			double[]   colSumTable = new double[comb]; 
+			
+			for(int i=0;i<comb;i++){
+				observedValues[0][i] = 0;
+				observedValues[1][i] = 0;
+				colSumTable[i] = 0;
+			}
+			
+			/*constructing observed freq table*/
+			for(int i=0;i<rowCount;i++){
+				int index = 0;
+				boolean cont = true;
+				loop:for(int j=0;j<k;j++){
+					if(data[i][2*selectedSNPSet[j]] && data[i][2*selectedSNPSet[j]+1]){
+						cont = false;
+						break loop;
+					}else{
+						int val = 0;
+						if(!data[i][2*selectedSNPSet[j]] && data[i][2*selectedSNPSet[j]+1]){
+							val =1;
+						}
+						if(data[i][2*selectedSNPSet[j]] && !data[i][2*selectedSNPSet[j]+1]){
+							val =2;
+						}
+						index = index + val*(int)Math.pow(3.0,(k-1-j));
+					}
+				}
+				
+				if(cont){
+					if(!data[i][2*(colCount-1)] && !data[i][2*colCount-1]){
+						observedValues[0][index]++;
+					}else{
+						observedValues[1][index]++;
+					}
+					colSumTable[index]++;
+				}
+			}
+			
+			/*computing expected freq values and compute chi-square value*/
+			double interaction = 0;
+			
+			double Nd = classValues[0];
+			double Nc = classValues[1];
+			
+			double Pd = 0;
+			double Pc = 0;
+			
+			double betaK = 0.5;
+			double beta  = comb*betaK;
+			
+			for(int i=0;i<comb;i++){
+				Pd = Pd+lnGamma(betaK+observedValues[0][i])-lnGamma(betaK);
+				Pc = Pc+lnGamma(betaK+observedValues[1][i])-lnGamma(betaK);
+			}
+			
+			Pd = Pd + lnGamma(beta)-lnGamma(Nd+beta);
+			Pc = Pc + lnGamma(beta)-lnGamma(Nc+beta);
+			
+			interaction = Pd+Pc;
+		   
+			return interaction; 
+        }
+        
+      public int getNumEvaluations(){
+    	  return numEvaluation;
+      }
+      
+	
+     public static void main(String[] args) throws Exception{
+    	 
+    	 String path ="D:\\Share\\epidata_400\\0.4_0.4\\25\\";
+    	 
+    	 String measure = "chi_square";
+		 String resultType = "thresholdBased";
+		
+		 int numSuccessiveRun = 20;
+		 double pValue = 0.01;
+		 int maxk =2;
+		 int mink =1;
+		 
+		 int topK = 5;
+		 
+		 double start = System.currentTimeMillis();
+		 
+		 SNPHarvester alg = new SNPHarvester();
+		
+		 ArrayList result = new ArrayList();
+		 
+		 if(resultType.equals("thresholdBased")){
+			 result = alg.thresholdBasedRunningProcess(path,measure,pValue,numSuccessiveRun,mink,maxk);
+		 }
+		 
+		 if(resultType.equals("topKBased")){
+			 result = alg.topKBasedRunningProcess(path,measure,topK,numSuccessiveRun,mink,maxk);
+		 }
+		 
+		 for(int j=0;j<result.size();j++){
+			 ArrayList al = (ArrayList)result.get(j);
+			 String pattern = (String)al.get(0);
+			 double value = ((Double)al.get(1)).doubleValue();
+			 System.out.println(measure+" value:"+value+" || "+pattern);
+		 }
+		 
+		 double end = System.currentTimeMillis();
+		 System.out.println("Runnning Time:"+(end-start)/(double)1000);
+			
+     }
+
+}

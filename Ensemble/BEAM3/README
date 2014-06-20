@@ -1,0 +1,143 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+<BEAM3>
+Yu Zhang
+
+This is a brief guide for using BEAM3 (Bayesian Epistatis Association Mapping). 
+
+The program uses graphs to account for SNP linkage disequlibrium (LD), such that the SNPs 
+and SNP-SNP interactions are directly associatied with the disease, not due to LD effects.
+
+The program also constructs a disease graph. Each node in the disease graph contains one or multiple
+SNPs. The SNPs in a node are affecting the disease together, but independently of SNPs not included in the node. 
+Each edge in the disease graph indicates an "interaction" between two nodes. That is, the two sets of SNPs
+in the two connected nodes are jointly affecting the disease. Here, "interaction" means the two sets of SNPs
+are jointly associated with the disease, i.e., their joint contribution to disease risk is stronger than their 
+marginal contribution individually. This should not be confused with interation versus main effects in a regression
+model, where interaction means the additional effects on top of main effects. In another word, even if an 
+edge is present between two nodes, the SNPs within each node could still have main effects.
+
+This version of the software is compiled in linux, and has not been exhaustively tested on all kinds of linux systems.
+
+This software currently only supports case control studies. A software supporting QTL studies will be
+released later. In the meanwhile, if you have quantitative traits, you could partition the traits into two classes, 
+and then treat the data as cases and controls. This may not be a bad idea at all.
+
+If you need to run this software on Windows or Mac or any other systems, you'll need to recompile the source code, which
+is available on my website. However, be sure to download the GNU Scientific Library too, as my code requires it.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+This package contains the following files:
+	BEAM3
+	README.txt
+	toydata.txt
+
+[1. Installation]-----------------------------------------
+
+Unzip all files into one folder. BEAM3 uses the GNU Scientific Library (GSL),
+which has been built in the executables.
+Run the program from command line by typing 
+
+./BEAM3 [inputfile] -o [outname] [options]
+
+
+[2. Input Data Format]-----------------------------------------
+
+The inpute file contains the case-control genotype data. The program allows 2 or 3 allelic
+markers, corresponding to phased SNP alleles or unphased genotypes, respectively. 
+The alleles should be coded as 0, 1, 2, with 3 denoting missing alleles. It
+doesn't matter which allele/genotype is coded by which integer, but have to
+use 3 or larger numbers to denote missing alleles. Currently missing alleles are
+imputed by rule of thumb at each SNP independently. You may use other imputation software
+to impute missing genotypes before running BEAM3;
+
+The first line of the input file should contain the disease status of each individual.
+You should use 1 to denote patients and 0 to denote controls. However, start
+the first line by "ID Chr Position ", for example, to denote 3 cases and 3
+controls, input the following in the first line:
+
+ID Chr Position 1 1 1 0 0 0
+
+Starting from the second line of the input file, each line contains the genotype data
+at one SNP for all individuals, separated by space. But again, start each
+line with information about SNP_ID, chromosome, and position. For example: 
+
+rs1021 chr5 110123456 1 0 3 0 2 2
+
+This line specifies a SNP called "rs1021", at chr5:110123456, which has genotypes 
+1, 0, and a missing value in three cases, and 0, 2, 2 in three controls, respectively.
+
+Always use numerical values for chromosome numbers, such as chr23 for chrX.
+
+Each column in the input file denote one individual, the disease 
+status for each individual specified in the first line must match with the correponding 
+column of genotypes in the remaining lines. 
+
+SNPs should be sorted by their physical locations.
+
+Please see the included "toydata.txt" for an example of the input file.
+
+[3. Options]
+
+There are a few options controlled by the users. 
+
+"-filter k": This option tells the program to filter SNPs with too many missing genotypes (3%),
+	     unbalanced missing between cases and controls, and SNPs violating HWE.
+	     If this option is used, the user must specify the value k. k=0 if heterozygote is
+	     coded as 2, and k=1 if heterozygote is coded as 1.
+
+"-sample burnin mcmc": This option specifies the numbers of burnin and sampling iteractions.
+	     By default, burnin=mcmc=100. In each iteration, the program updates all variables once,
+	     and thus these numbers do not necessarily relate with the number of SNPs. A few
+	     hundreds iterations will be enough for most cases.
+
+"-prior p": This option specifies how likely each SNP is associated with the disease.
+	    By default, p=5/L, i.e., 5 associated SNPs are expected (of L SNPs).
+
+"-T t":   This option tells the program to start running MCMC at a high temperature t, and the
+	  temperature drops to 1 gradually over iterations. This option helps the program to jump
+	  out of local modes in the first few iterations. However, this option can make the program
+	  very slow in the first few iterations, because many SNPs will be included in calculation
+	  when at high temporature.
+
+[4. Output]-----------------------------------------
+
+BEAM3 outputs 3 files, posterior.[outname] g.[outname].dot chi.txt
+
+posterior.[outname] contains the posterior probabilities of marginal and interaction associations per SNP.
+The content of the file almost is self explainary, where 0.01 + 0.10 = 0.11 means that the marginal
+association probability at this SNP is 0.1, and the interaction association at this SNP is 0.10, and
+the total disease association at this SNP is 0.11. You could also sum the probabilities of multiple SNPs
+in a region to estimate the number of disease associated SNPs in the region. For example, if there 
+are 100 SNPs spanning a 1Mb region, by summing the posterior probabilities (marginal, interaction,
+or total) of the 100 SNPs, you could obtain an estimated number of disease SNPs in this region.
+
+g.[outname].dot contains the disease graph. You can use GraphViz, a free software for graph visulization,
+to visualize the disease graph. The first few lines in the file define graph nodes, and the numbers in
+the parenthesis denotes the posterior probability of association of the node (summed over 100kb region).
+The last few lines in the file define edges.
+
+chi.txt is a chisq single-SNP test file, with test statistics and allele counts listed. This is for 
+comparison purpose, not a necessary result from BEAM3.
+
+[4. Credit]-----------------------------------------
+
+This program is developed based on algorithms described in 
+
+Zhang Y and Liu JS (2007). Bayesian Inference of Epistatic Interations in
+Case-Control Studies. Nature Genetics, 39:1167-1173
+
+Zhang Y, Zhang J, Liu JS (2010) Block-based Bayesian Epistasis Association
+Mapping with Application to WTCCC Type 1 Diabetes Data. Ann Appl Stat, 5:2052-2077.
+
+Zhang Y. A novel bayesian graphical model for genome-wide multi-SNP association mapping.
+Genet Epi. (2011) Nov 29. doi: 10.1002/gepi.20661. [Epub ahead of print]
+ 
+[5. Support]-----------------------------------------
+
+Should you have questions or comments, please contact 
+Yu Zhang
+Department of Statistics, 
+The Pennsylvania State University
+325 Thomas Building
+University Park, PA 16802.
+Email: yuzhang at stat dot psu dot edu

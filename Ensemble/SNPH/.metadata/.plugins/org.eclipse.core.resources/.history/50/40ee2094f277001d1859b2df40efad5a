@@ -1,0 +1,17 @@
+package algorithms;
+
+public class postProcessing extends BasicAlg{
+	
+	public postProcessing(String path) throws Exception{
+		ReadWholeGnomeData(path);
+	}
+	
+	
+	public static void main(String[] args) throws Exception{
+		
+		String path ="D:\\Share\\WTCCC\\";
+		
+		ReadWholeGnomeData(path);
+		
+	}
+}

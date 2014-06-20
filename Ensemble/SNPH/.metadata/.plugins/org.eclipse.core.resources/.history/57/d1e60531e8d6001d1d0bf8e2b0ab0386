@@ -1,0 +1,91 @@
+package test;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.util.ArrayList;
+import java.util.StringTokenizer;
+import java.math.BigInteger;
+
+import algorithms.*;
+
+public class testSequentialKMedoidsWholeGenome {
+
+	public static void main(String[] args) throws Exception{
+		
+		for(int s=0;s<1;s++){
+			
+			String path ="D:\\Share\\WTCCC\\";
+			
+			String measure = "chi_square";
+			String resultType = "topKBased";
+			
+            File outputfile= new File(path+"SequentialKMedoids_Result("+measure+")_All.txt");
+            BufferedWriter out = new BufferedWriter(new FileWriter(outputfile));
+
+			int topK = 1000;
+			
+			int numSuccessiveRun = 20;
+			double pValue = 0.01;
+			int maxk =3;
+			int mink =1;
+			
+			
+			double start = System.currentTimeMillis();
+			
+			String[] groundTruth = {"11","21"}; 
+			String gstr = "(";
+			for(int i=0;i<groundTruth.length;i++){
+				gstr = gstr + groundTruth[i]+",";
+			}
+			gstr = gstr.substring(0,gstr.length()-1)+")";
+			
+			
+			
+			double identified =0;
+			
+			
+			SNPHarvester alg = new SNPHarvester();
+			ArrayList result = new ArrayList();
+			if(resultType.equals("thresholdBased")){
+				result = alg.thresholdBasedclusteringProcess(path,measure,pValue,numSuccessiveRun,mink,maxk);
+			}
+			
+			if(resultType.equals("topKBased")){
+				result = alg.topKBasedClusteringProcess(path,measure,topK,numSuccessiveRun,mink,maxk);
+			}
+			
+			
+			for(int j=0;j<result.size();j++){
+				
+				ArrayList al = (ArrayList)result.get(j);
+				String pattern = (String)al.get(0);
+				
+				if(pattern.equals(gstr)){
+					identified++;
+				}
+				
+				double value = ((Double)al.get(1)).doubleValue();
+				
+				out.write(measure+" value:"+value+" || "+pattern+"\n");
+				System.out.println(measure+" value:"+value+" || "+pattern);
+			}
+			
+			System.out.println("Current Identified Interactions:"+identified);
+			out.write("Current Identified Interactions:"+identified+"\n");
+
+			double end = System.currentTimeMillis();
+			System.out.println("Final Identified Interactions:"+identified);
+			System.out.println("Total Runnning Time:"+(end-start)/(double)1000);
+			out.write("===Final Results======"+"\n");
+			out.write("Final Identified Interactions:"+identified+"\n");
+			out.write("Total Runnning Time:"+(end-start)/(double)1000+"\n");
+			
+			out.close();
+		}		
+	
+
+	}
+		
+}
+
